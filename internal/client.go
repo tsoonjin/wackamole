@@ -1,9 +1,8 @@
-package main
+package internal
 
 import (
 	"bytes"
 	"github.com/gorilla/websocket"
-	"github.com/tsoonjin/wackamole/internal"
 	"log"
 	"net/http"
 	"time"

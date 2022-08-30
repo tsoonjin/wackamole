@@ -12,11 +12,11 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"io"
 	"log"
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 )
 
@@ -39,24 +39,27 @@ const (
 	closeGracePeriod = 10 * time.Second
 )
 
-func pumpStdout(ws *websocket.Conn, r io.Reader, done chan struct{}) {
-	defer func() {
-	}()
-	fmt.Println("Init scan")
-	s := bufio.NewScanner(r)
-	for s.Scan() {
-		if err := ws.WriteMessage(websocket.TextMessage, s.Bytes()); err != nil {
+func readFromStdin(ws *websocket.Conn, in chan string, done chan struct{}) {
+	// create new reader from stdin
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		// read by one line (enter pressed)
+		s, err := reader.ReadString('\n')
+		// check for errors
+		if err != nil {
+			fmt.Println("Error in read string", err)
+			// close channel just to inform others
+			close(in)
+			close(done)
+		}
+		in <- s
+		if err := ws.WriteMessage(websocket.TextMessage, []byte(s)); err != nil {
 			fmt.Println("Error writing to server")
 			ws.Close()
 			break
 		}
-		fmt.Println("Msg written", s)
+		log.Print("[me]: ", s)
 	}
-	if s.Err() != nil {
-		log.Println("scan:", s.Err())
-	}
-	close(done)
-
 	ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	time.Sleep(closeGracePeriod)
 	ws.Close()
@@ -70,7 +73,6 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/register"}
-	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
@@ -79,26 +81,32 @@ func main() {
 	defer c.Close()
 
 	done := make(chan struct{})
-	outr, _, err := os.Pipe()
-	if err != nil {
-		fmt.Println("Error initiating write pipe")
-	}
-	go pumpStdout(c, outr, done)
+	input := make(chan string)
 
+	go readFromStdin(c, input, done)
 	go func() {
 		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
-				log.Println("read:", err)
+				log.Println("[error]:", err)
 				return
 			}
-			log.Printf("recv: %s", message)
+			log.Printf("[server]: %s", message)
 		}
 	}()
-
+exit:
 	for {
 		select {
+		case in := <-input:
+			// remove all leading and trailing white space
+			in = strings.TrimSpace(in)
+			if in == "exit" {
+				// if exit command received
+				// break from infinite loop to label and go next
+				// line after for loop
+				break exit
+			}
 		case <-done:
 			return
 		case <-interrupt:
@@ -110,9 +118,6 @@ func main() {
 			if err != nil {
 				log.Println("write close:", err)
 				return
-			}
-			select {
-			case <-done:
 			}
 			return
 		}
