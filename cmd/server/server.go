@@ -9,11 +9,14 @@ package main
 
 import (
 	"flag"
+	"github.com/gorilla/websocket"
+	"github.com/tsoonjin/wackamole/internal"
 	"log"
 	"net/http"
-
-	"github.com/gorilla/websocket"
+	"strings"
 )
+
+var rooms = make(map[string]internal.Game)
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
 
@@ -27,13 +30,26 @@ func echo(w http.ResponseWriter, r *http.Request) {
 	}
 	defer c.Close()
 	for {
-		mt, message, err := c.ReadMessage()
+		_, message, err := c.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
 			break
 		}
-		log.Printf("recv: %s", message)
-		err = c.WriteMessage(mt, message)
+		splittedMsg := strings.Split(string(message), " ")
+		command := splittedMsg[0]
+		args := splittedMsg[1:]
+		if command == "/join" {
+			roomName := args[0]
+			playerId := args[1]
+			if game, ok := rooms[roomName]; ok {
+				log.Printf("Room: %s exists with %d players\n", roomName, len(game.Players))
+				log.Printf("%s, welcome to room %s", playerId, roomName)
+			} else {
+				log.Printf("New Game: %s", roomName)
+				newGame := internal.CreateGame(roomName, 2, 2)
+				rooms[roomName] = newGame
+			}
+		}
 		if err != nil {
 			log.Println("write:", err)
 			break
