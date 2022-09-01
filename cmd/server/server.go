@@ -14,9 +14,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
-var rooms = make(map[string]internal.Game)
+var rooms = make(map[string]*internal.Game)
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
 
@@ -39,15 +40,33 @@ func echo(w http.ResponseWriter, r *http.Request) {
 		command := splittedMsg[0]
 		args := splittedMsg[1:]
 		if command == "/join" {
-			roomName := args[0]
-			playerId := args[1]
+			roomName := internal.ClearString(args[0])
+			playerId := internal.ClearString(args[1])
 			if game, ok := rooms[roomName]; ok {
 				log.Printf("Room: %s exists with %d players\n", roomName, len(game.Players))
 				log.Printf("%s, welcome to room %s", playerId, roomName)
+				err := game.AddPlayer(playerId)
+				if err != nil {
+					log.Println(err)
+				}
 			} else {
 				log.Printf("New Game: %s", roomName)
-				newGame := internal.CreateGame(roomName, 2, 2)
+				newGame, err := internal.CreateGame(roomName, 2, 2, []string{playerId}, time.NewTicker(time.Second))
+				if err != nil {
+					log.Println(err)
+				}
 				rooms[roomName] = newGame
+			}
+		}
+		if command == "/ready" {
+			roomName := internal.ClearString(args[0])
+			playerId := internal.ClearString(args[1])
+			if game, ok := rooms[roomName]; ok {
+				log.Printf("%s, you are ready now to play in room %s", playerId, roomName)
+				game.AddPlayerReady(playerId)
+			} else {
+				log.Println("Room does not exists")
+
 			}
 		}
 		if err != nil {
