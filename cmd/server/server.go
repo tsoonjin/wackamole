@@ -18,12 +18,13 @@ import (
 )
 
 var rooms = make(map[string]*internal.Game)
+var clientConnections = []websocket.Conn{}
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
 
 var upgrader = websocket.Upgrader{} // use default options
 
-func echo(w http.ResponseWriter, r *http.Request) {
+func handleConnection(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)
@@ -45,13 +46,15 @@ func echo(w http.ResponseWriter, r *http.Request) {
 			if game, ok := rooms[roomName]; ok {
 				log.Printf("Room: %s exists with %d players\n", roomName, len(game.Players))
 				log.Printf("%s, welcome to room %s", playerId, roomName)
-				err := game.AddPlayer(playerId)
+				err := game.AddPlayer(playerId, c)
 				if err != nil {
 					log.Println(err)
 				}
 			} else {
 				log.Printf("New Game: %s", roomName)
-				newGame, err := internal.CreateGame(roomName, 2, 2, []string{playerId}, time.NewTicker(time.Second))
+				conns := make(map[string]*websocket.Conn)
+				conns[playerId] = c
+				newGame, err := internal.CreateGame(roomName, 2, 2, []string{playerId}, time.NewTicker(time.Second), conns)
 				if err != nil {
 					log.Println(err)
 				}
@@ -79,6 +82,6 @@ func echo(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.Parse()
 	log.SetFlags(0)
-	http.HandleFunc("/register", echo)
+	http.HandleFunc("/register", handleConnection)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
