@@ -31,6 +31,11 @@ func (g *Game) transitionGameState() {
 		log.Println("Game is over")
 	}
 	if g.state == Running {
+		for _, item := range g.actions {
+			if time.Now().Unix()-item.timestamp <= 3 {
+				log.Printf("%s send %s", item.id, item.msg)
+			}
+		}
 		for playerId, conn := range g.conn {
 			w, err := conn.NextWriter(websocket.TextMessage)
 			if err != nil {
@@ -63,8 +68,15 @@ var (
 	Over              = GameState{"over"}
 )
 
+type Action struct {
+	timestamp int64
+	id        string
+	msg       string
+}
+
 type Game struct {
 	// Id must be unique. Akin to room name
+	actions        []Action
 	Id             string
 	startTime      time.Time
 	gameDurationMs int64
@@ -86,7 +98,7 @@ func CreateGame(name string, minPlayers int, maxPlayers int, players []string, t
 	if len(players) > maxPlayers {
 		return nil, ErrorMaxPlayersReached
 	}
-	newGame := &Game{gameDurationMs: 60000, Id: name, maxPlayers: maxPlayers, minPlayers: minPlayers, Players: players, state: WaitEnoughPlayers, playerReady: []string{}, conn: conns}
+	newGame := &Game{gameDurationMs: 60000, Id: name, maxPlayers: maxPlayers, minPlayers: minPlayers, Players: players, state: WaitEnoughPlayers, playerReady: []string{}, conn: conns, actions: []Action{}}
 	go func() {
 		for {
 			select {
@@ -117,4 +129,8 @@ func (g *Game) AddPlayerReady(playerId string) {
 	if !contains(g.playerReady, playerId) && contains(g.Players, playerId) {
 		g.playerReady = append(g.playerReady, playerId)
 	}
+}
+
+func (g *Game) AddAction(ts int64, playerId string, msg string) {
+	g.actions = append(g.actions, Action{timestamp: ts, id: playerId, msg: msg})
 }

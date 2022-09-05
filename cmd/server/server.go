@@ -72,6 +72,17 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 
 			}
 		}
+		if command == "/action" {
+			roomName := internal.ClearString(args[0])
+			playerId := internal.ClearString(args[1])
+			msg := internal.ClearString(args[2])
+			if game, ok := rooms[roomName]; ok {
+				game.AddAction(time.Now().Unix(), playerId, msg)
+
+			} else {
+				log.Println("Room does not exists")
+			}
+		}
 		if err != nil {
 			log.Println("write:", err)
 			break
