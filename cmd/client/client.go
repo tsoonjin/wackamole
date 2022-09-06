@@ -21,6 +21,7 @@ import (
 )
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
+var endpoint = flag.String("endpoint", "/register", "endpoint of server")
 
 const (
 	// Time allowed to write a message to the peer.
@@ -72,7 +73,7 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/register"}
+	u := url.URL{Scheme: "ws", Host: *addr, Path: *endpoint}
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
