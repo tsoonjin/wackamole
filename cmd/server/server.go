@@ -100,7 +100,7 @@ func handleConnect(interupt chan os.Signal) http.HandlerFunc {
 			log.Print("upgrade:", err)
 			return
 		}
-		go session.Run(interupt)
+		go session.Run(interupt, rooms)
 	}
 }
 

@@ -115,6 +115,33 @@ func CreateGame(name string, minPlayers int, maxPlayers int, players []string, t
 	return newGame, nil
 }
 
+func CreateGameV2(name string, minPlayers int, maxPlayers int, players []string, ticker *time.Ticker, conns []*websocket.Conn) (*Game, error) {
+	if minPlayers == 0 {
+		minPlayers = 2
+	}
+	if maxPlayers == 0 {
+		maxPlayers = 2
+	}
+	if len(players) > maxPlayers {
+		return nil, ErrorMaxPlayersReached
+	}
+	newGame := &Game{gameDurationMs: 60000, Id: name, maxPlayers: maxPlayers, minPlayers: minPlayers, Players: players, state: WaitEnoughPlayers, playerReady: []string{}, actions: []Action{}}
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				newGame.transitionGameState()
+			}
+			if newGame.state == Over {
+				ticker.Stop()
+				log.Println("Ticker is stopped. Game over")
+				return
+			}
+		}
+	}()
+	return newGame, nil
+}
+
 func (g *Game) AddPlayer(playerId string, conn *websocket.Conn) error {
 	if len(g.Players) == g.maxPlayers {
 		return ErrorMaxPlayersReached

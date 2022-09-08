@@ -2,14 +2,21 @@ package internal
 
 // Manages incoming connections
 import (
+	"errors"
 	"github.com/cip8/autoname"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
 	"os"
+	"strings"
+	"time"
 )
 
-var channel_buffer int = 10
+var channel_buffer int = 256
+
+type Command interface {
+	execute()
+}
 
 type Session struct {
 	Id   string
@@ -17,6 +24,7 @@ type Session struct {
 	conn *websocket.Conn
 	in   chan []byte
 	out  chan []byte
+	room *Game
 }
 
 func InitSession(conn *websocket.Conn) Session {
@@ -24,8 +32,8 @@ func InitSession(conn *websocket.Conn) Session {
 		Id:   uuid.New().String(),
 		Name: autoname.Generate(""),
 		conn: conn,
-		in:   make(chan []byte),
-		out:  make(chan []byte),
+		in:   make(chan []byte, channel_buffer),
+		out:  make(chan []byte, channel_buffer),
 	}
 }
 
@@ -36,10 +44,38 @@ func (s *Session) Reconnect(conn *websocket.Conn) {
 	s.out = make(chan []byte)
 }
 
-func (s *Session) Run(interupt chan os.Signal) {
-	defer close(s.out)
+func joinGame(s *Session, args []string) (*Game, error) {
+	if s.room != nil {
+		s.in <- []byte("Cannot join another game till current game ends")
+	}
+	roomName := ClearString(args[0])
+	newGame, err := CreateGameV2(roomName, 2, 2, []string{s.Id}, time.NewTicker(time.Second), []*websocket.Conn{s.conn})
+	if err != nil {
+		return nil, errors.New("failed to join game")
+	}
+	return newGame, nil
+}
+
+func (s *Session) parseCommand(msg string) {
+	splittedMsg := strings.Split(msg, " ")
+	command := splittedMsg[0]
+	args := splittedMsg[1:]
+	switch command {
+	case "/join":
+		log.Println("Join a game room")
+		joinGame(s, args)
+	case "/ready":
+		log.Printf("Player %s is ready to rumble in %s", s.Name, s.room.Id)
+	default:
+		log.Println("No matching command")
+
+	}
+}
+
+func (s *Session) Run(interupt chan os.Signal, rooms map[string]*Game) {
 	// Handle socket connection with client
 	go func() {
+		defer s.conn.Close()
 		for {
 			_, message, err := s.conn.ReadMessage()
 			if err != nil {
@@ -54,17 +90,18 @@ func (s *Session) Run(interupt chan os.Signal) {
 		select {
 		case msgFromClient := <-s.in:
 			log.Printf("%s <<: %s", s.Name, string(msgFromClient))
+			s.parseCommand((string(msgFromClient)))
 			s.out <- []byte("Acked")
 
 		case msgToClient := <-s.out:
 			if err := s.conn.WriteMessage(websocket.TextMessage, msgToClient); err != nil {
 				log.Println("Error writing to client")
 			}
-			log.Printf("%s >>: %s", s.Name, string(msgToClient))
 
 		case <-interupt:
 			log.Println("Interupted by user")
-			err := s.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			err := s.conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				log.Println("Write close:", err)
 				return
