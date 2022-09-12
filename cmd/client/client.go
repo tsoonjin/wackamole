@@ -93,7 +93,9 @@ func main() {
 				log.Println("[error]:", err)
 				return
 			}
-			log.Printf("[server]: %s", message)
+			if !strings.HasPrefix(string(message), "Game Update") {
+				log.Printf("[server]: %s", message)
+			}
 		}
 	}()
 exit:

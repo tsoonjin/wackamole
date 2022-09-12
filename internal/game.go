@@ -19,14 +19,9 @@ func (g *Game) transitionGameState() {
 	timeLeft := g.gameDurationMs - timeElapsed
 	if g.state == Running && timeLeft <= 0 {
 		g.state = Over
-		for playerId, conn := range g.conn {
-			w, err := conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				log.Println("Error writing message")
-			}
-			msgToClient := fmt.Sprintf("[%s]: Game is over\n", playerId)
-			w.Write([]byte(msgToClient))
-			log.Printf("Time left: %d\n", timeLeft)
+		for _, s := range g.sessions {
+			msgToClient := fmt.Sprintf("[%s]: Game is over\n", s.Id)
+			s.out <- []byte(msgToClient)
 		}
 		log.Println("Game is over")
 	}
@@ -36,15 +31,11 @@ func (g *Game) transitionGameState() {
 				log.Printf("%s send %s", item.id, item.msg)
 			}
 		}
-		for playerId, conn := range g.conn {
-			w, err := conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				log.Println("Error writing message")
-			}
-			msgToClient := fmt.Sprintf("[%s]: Time left: %d\n", playerId, timeLeft)
-			w.Write([]byte(msgToClient))
-			log.Printf("Time left: %d\n", timeLeft)
+		for _, s := range g.sessions {
+			msgToClient := fmt.Sprintf("Game Update [%s]: Time left: %d\n", s.Name, timeLeft)
+			s.out <- []byte(msgToClient)
 		}
+		log.Printf("Game will be over in : %d seconds", timeLeft)
 	}
 	if len(g.Players) == g.minPlayers && g.state == WaitEnoughPlayers {
 		g.state = WaitPlayersReady
@@ -86,6 +77,7 @@ type Game struct {
 	state          GameState
 	playerReady    []string
 	conn           map[string]*websocket.Conn
+	sessions       []*Session
 }
 
 func CreateGame(name string, minPlayers int, maxPlayers int, players []string, ticker *time.Ticker, conns map[string]*websocket.Conn) (*Game, error) {
@@ -115,7 +107,7 @@ func CreateGame(name string, minPlayers int, maxPlayers int, players []string, t
 	return newGame, nil
 }
 
-func CreateGameV2(name string, minPlayers int, maxPlayers int, players []string, ticker *time.Ticker, conns []*websocket.Conn) (*Game, error) {
+func CreateGameV2(name string, minPlayers int, maxPlayers int, players []string, ticker *time.Ticker, sessions []*Session) (*Game, error) {
 	if minPlayers == 0 {
 		minPlayers = 2
 	}
@@ -125,7 +117,7 @@ func CreateGameV2(name string, minPlayers int, maxPlayers int, players []string,
 	if len(players) > maxPlayers {
 		return nil, ErrorMaxPlayersReached
 	}
-	newGame := &Game{gameDurationMs: 60000, Id: name, maxPlayers: maxPlayers, minPlayers: minPlayers, Players: players, state: WaitEnoughPlayers, playerReady: []string{}, actions: []Action{}}
+	newGame := &Game{gameDurationMs: 60000, Id: name, maxPlayers: maxPlayers, minPlayers: minPlayers, Players: players, state: WaitEnoughPlayers, playerReady: []string{}, actions: []Action{}, sessions: sessions}
 	go func() {
 		for {
 			select {
@@ -142,18 +134,18 @@ func CreateGameV2(name string, minPlayers int, maxPlayers int, players []string,
 	return newGame, nil
 }
 
-func (g *Game) AddPlayer(playerId string, conn *websocket.Conn) error {
+func (g *Game) AddPlayer(playerId string, session *Session) error {
 	if len(g.Players) == g.maxPlayers {
 		return ErrorMaxPlayersReached
 	}
 	g.Players = append(g.Players, playerId)
-	g.conn[playerId] = conn
-	log.Printf("%d no of connections registered", len(g.conn))
+	g.sessions = append(g.sessions, session)
+	log.Printf("%d no of connections registered", len(g.sessions))
 	return nil
 }
 
 func (g *Game) AddPlayerReady(playerId string) {
-	if !contains(g.playerReady, playerId) && contains(g.Players, playerId) {
+	if !contains(g.playerReady, playerId) && contains(g.Players, playerId) && g.state == WaitPlayersReady {
 		g.playerReady = append(g.playerReady, playerId)
 	}
 }

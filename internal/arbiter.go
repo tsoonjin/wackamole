@@ -2,7 +2,6 @@ package internal
 
 // Manages incoming connections
 import (
-	"errors"
 	"github.com/cip8/autoname"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -44,35 +43,41 @@ func (s *Session) Reconnect(conn *websocket.Conn) {
 	s.out = make(chan []byte)
 }
 
-func joinGame(s *Session, args []string) (*Game, error) {
-	if s.room != nil {
-		s.in <- []byte("Cannot join another game till current game ends")
-	}
-	roomName := ClearString(args[0])
-	newGame, err := CreateGameV2(roomName, 2, 2, []string{s.Id}, time.NewTicker(time.Second), []*websocket.Conn{s.conn})
-	if err != nil {
-		return nil, errors.New("failed to join game")
-	}
-	return newGame, nil
-}
-
-func (s *Session) parseCommand(msg string) {
+func (s *Session) parseCommand(msg string, rooms *map[string]*Game) {
 	splittedMsg := strings.Split(msg, " ")
-	command := splittedMsg[0]
+	command := strings.TrimRight(splittedMsg[0], "\n")
 	args := splittedMsg[1:]
 	switch command {
 	case "/join":
-		log.Println("Join a game room")
-		joinGame(s, args)
+		roomName := args[0]
+		log.Printf("Player %s wants to join a game, %s", s.Name, roomName)
+		if s.room != nil {
+			log.Printf("Player %s unable to join a game till current game is over", s.Name)
+		}
+		if game, ok := (*rooms)[roomName]; ok {
+			s.room = game
+			game.AddPlayer(s.Id, s)
+			return
+		}
+		newGame, err := CreateGameV2(roomName, 2, 2, []string{s.Id}, time.NewTicker(time.Second), []*Session{s})
+		if err != nil {
+			s.out <- []byte("Failed to create a new game room")
+		}
+		log.Printf("New game room created: %s", roomName)
+		(*rooms)[roomName] = newGame
+		s.room = newGame
 	case "/ready":
 		log.Printf("Player %s is ready to rumble in %s", s.Name, s.room.Id)
+		s.room.AddPlayerReady(s.Id)
 	default:
-		log.Println("No matching command")
+		if s.room.state == Running {
+			s.room.AddAction(time.Now().Unix(), s.Id, msg)
+		}
 
 	}
 }
 
-func (s *Session) Run(interupt chan os.Signal, rooms map[string]*Game) {
+func (s *Session) Run(interupt chan os.Signal, rooms *map[string]*Game) {
 	// Handle socket connection with client
 	go func() {
 		defer s.conn.Close()
@@ -90,7 +95,7 @@ func (s *Session) Run(interupt chan os.Signal, rooms map[string]*Game) {
 		select {
 		case msgFromClient := <-s.in:
 			log.Printf("%s <<: %s", s.Name, string(msgFromClient))
-			s.parseCommand((string(msgFromClient)))
+			s.parseCommand(string(msgFromClient), rooms)
 			s.out <- []byte("Acked")
 
 		case msgToClient := <-s.out:
