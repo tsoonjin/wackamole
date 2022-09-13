@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/gorilla/websocket"
@@ -89,6 +90,11 @@ func main() {
 		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
+			var dat map[string]interface{}
+			jsonErr := json.Unmarshal(message, &dat)
+			if jsonErr == nil {
+				log.Printf("Game State\n%v", dat)
+			}
 			if err != nil {
 				log.Println("[error]:", err)
 				return
