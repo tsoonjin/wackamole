@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/tsoonjin/wackamole/internal"
 	"log"
 	"net/url"
 	"os"
@@ -67,6 +68,23 @@ func readFromStdin(ws *websocket.Conn, in chan string, done chan struct{}) {
 	ws.Close()
 }
 
+func drawGameBoard(board [3][3]int) string {
+	gameStr := []string{}
+	for _, row := range board {
+		drawRow := []string{}
+		for _, cell := range row {
+			if cell == 1 {
+				drawRow = append(drawRow, " M ")
+			} else {
+				drawRow = append(drawRow, "   ")
+			}
+
+		}
+		gameStr = append(gameStr, "|"+strings.Join(drawRow, "|")+"|")
+	}
+	return "-------------\n" + strings.Join(gameStr, "\n-------------\n") + "\n-------------"
+}
+
 func main() {
 	flag.Parse()
 	log.SetFlags(0)
@@ -90,16 +108,16 @@ func main() {
 		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
-			var dat map[string]interface{}
+			var dat internal.GameBoard
 			jsonErr := json.Unmarshal(message, &dat)
 			if jsonErr == nil {
-				log.Printf("Game State\n%v", dat)
+				log.Println(drawGameBoard(dat.Board))
 			}
 			if err != nil {
 				log.Println("[error]:", err)
 				return
 			}
-			if !strings.HasPrefix(string(message), "Game Update") {
+			if !strings.HasPrefix(string(message), "Game Update") && jsonErr != nil {
 				log.Printf("[server]: %s", message)
 			}
 		}
