@@ -111,6 +111,8 @@ func main() {
 			var dat internal.GameBoard
 			jsonErr := json.Unmarshal(message, &dat)
 			if jsonErr == nil {
+				fmt.Print("\033[2J")
+				fmt.Print("\033[H")
 				log.Println(drawGameBoard(dat.Board))
 			}
 			if err != nil {
