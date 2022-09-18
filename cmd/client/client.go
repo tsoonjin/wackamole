@@ -81,6 +81,8 @@ func drawGameBoard(board [3][3]int) string {
 		for _, cell := range row {
 			if cell == 1 {
 				drawRow = append(drawRow, " M ")
+			} else if cell == 2 {
+				drawRow = append(drawRow, " R ")
 			} else {
 				drawRow = append(drawRow, "   ")
 			}

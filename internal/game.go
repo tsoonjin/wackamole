@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 	"log"
 	"math/rand"
+	"sort"
 	"time"
 )
 
@@ -22,12 +23,20 @@ type GameState struct {
 }
 
 var ErrorMaxPlayersReached = errors.New("max players reached")
+var keyMap = map[string][]int{"w": []int{0, 0}, "e": []int{0, 1}, "r": []int{0, 2}, "s": []int{1, 0}, "d": []int{1, 1}, "f": []int{1, 2}, "x": []int{2, 0}, "c": []int{2, 1}, "v": []int{2, 2}}
 
 func generateGameBoard(prevBoard [3][3]int) [3][3]int {
 	molePosX := rand.Intn(3)
 	molePosY := rand.Intn(3)
+	rabbitPosX := rand.Intn(3)
+	rabbitPosY := rand.Intn(3)
+	for rabbitPosX == molePosX && rabbitPosY == molePosY {
+		rabbitPosX = rand.Intn(3)
+		rabbitPosY = rand.Intn(3)
+	}
 	newBoard := [3][3]int{}
 	newBoard[molePosX][molePosY] = 1
+	newBoard[rabbitPosX][rabbitPosY] = 2
 	return newBoard
 }
 
@@ -51,13 +60,32 @@ func (g *Game) transitionGameState() {
 			msgToClient := fmt.Sprintf("[%s]: Game is over\n", s.Id)
 			s.out <- []byte(msgToClient)
 		}
+		keys := make([]string, 0, len(g.board.Scores))
+
+		for key := range g.board.Scores {
+			keys = append(keys, key)
+		}
+
+		sort.SliceStable(keys, func(i, j int) bool {
+			return g.board.Scores[keys[i]] < g.board.Scores[keys[j]]
+		})
 		log.Println("Game is over")
 	}
 	if g.state == Running {
 		encodedBoard, _ := json.Marshal(g.board)
+		actions := g.actions
+		sort.SliceStable(actions, func(i, j int) bool {
+			return actions[i].timestamp < actions[j].timestamp
+		})
 		for _, item := range g.actions {
-			if time.Now().Unix()-item.timestamp <= 3 {
-				log.Printf("%s send %s", item.id, item.msg)
+			key, exists := keyMap[item.msg]
+			if exists {
+				if g.board.Board[key[0]][key[1]] == 1 {
+					g.board.Scores[item.id] += 1
+				}
+				if g.board.Board[key[0]][key[1]] == 2 {
+					g.board.Healths[item.id] -= 1
+				}
 			}
 		}
 		for _, s := range g.sessions {
@@ -65,7 +93,7 @@ func (g *Game) transitionGameState() {
 		}
 		newBoard := GameBoard{Scores: g.board.Scores, Healths: g.board.Healths, GameTime: timeLeft, Board: generateGameBoard(g.board.Board)}
 		g.board = newBoard
-		log.Printf("Game will be over in : %d seconds", timeLeft)
+		log.Printf("Game will be over in : %d seconds\nScores: %v", timeLeft, g.board.Scores)
 	}
 	if len(g.Players) == g.minPlayers && g.state == WaitEnoughPlayers {
 		g.state = WaitPlayersReady

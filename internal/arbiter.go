@@ -71,6 +71,7 @@ func (s *Session) parseCommand(msg string, rooms *map[string]*Game) {
 		s.room.AddPlayerReady(s.Id)
 	default:
 		if s.room.state == Running {
+			log.Printf("Recv %s, %s", s.Id, msg)
 			s.room.AddAction(time.Now().Unix(), s.Id, msg)
 		}
 
