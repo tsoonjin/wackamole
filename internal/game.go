@@ -72,6 +72,9 @@ func (g *Game) transitionGameState() {
 		log.Printf("Waiting for players to get ready: %d/%d\n", len(g.playerReady), g.minPlayers)
 	}
 	if len(g.playerReady) == g.minPlayers && g.state == WaitPlayersReady {
+		for _, s := range g.sessions {
+			s.out <- []byte("Game started")
+		}
 		newBoard := g.initGameBoard()
 		g.state = Running
 		log.Println("Game is starting")

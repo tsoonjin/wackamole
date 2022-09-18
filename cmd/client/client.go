@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/tsoonjin/wackamole/internal"
+	"golang.org/x/term"
 	"log"
 	"net/url"
 	"os"
@@ -22,6 +23,11 @@ import (
 	"time"
 )
 
+type State struct {
+	Game internal.GameState
+}
+
+var state = &State{Game: internal.WaitEnoughPlayers}
 var addr = flag.String("addr", "localhost:8080", "http service address")
 var endpoint = flag.String("endpoint", "/register", "endpoint of server")
 
@@ -42,7 +48,7 @@ const (
 	closeGracePeriod = 10 * time.Second
 )
 
-func readFromStdin(ws *websocket.Conn, in chan string, done chan struct{}) {
+func readFromStdin(ws *websocket.Conn, in chan string, done chan struct{}, state *State) {
 	// create new reader from stdin
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -82,7 +88,7 @@ func drawGameBoard(board [3][3]int) string {
 		}
 		gameStr = append(gameStr, "|"+strings.Join(drawRow, "|")+"|")
 	}
-	return "-------------\n" + strings.Join(gameStr, "\n-------------\n") + "\n-------------"
+	return "-------------\r\n" + strings.Join(gameStr, "\r\n-------------\r\n") + "\r\n-------------\r\n"
 }
 
 func main() {
@@ -103,7 +109,7 @@ func main() {
 	done := make(chan struct{})
 	input := make(chan string)
 
-	go readFromStdin(c, input, done)
+	go readFromStdin(c, input, done, state)
 	go func() {
 		defer close(done)
 		for {
@@ -113,7 +119,41 @@ func main() {
 			if jsonErr == nil {
 				fmt.Print("\033[2J")
 				fmt.Print("\033[H")
-				log.Println(drawGameBoard(dat.Board))
+				fmt.Print(drawGameBoard(dat.Board))
+			}
+			if string(message) == "Game started" {
+				state.Game = internal.Running
+				go func(ws *websocket.Conn) {
+					log.Println("Do something")
+					// fd 0 is stdin
+					state, err := term.MakeRaw(0)
+					if err != nil {
+						log.Fatalln("setting stdin to raw:", err)
+					}
+					defer func() {
+						if err := term.Restore(0, state); err != nil {
+							log.Println("warning, failed to restore terminal:", err)
+						}
+					}()
+
+					in := bufio.NewReader(os.Stdin)
+					for {
+						r, _, err := in.ReadRune()
+						if err != nil {
+							log.Println("stdin:", err)
+							break
+						}
+						if err := ws.WriteMessage(websocket.TextMessage, []byte(string(r))); err != nil {
+							fmt.Println("Error writing to server")
+							ws.Close()
+							break
+						}
+						fmt.Printf("read rune %q\r\n", r)
+						if r == 'q' {
+							break
+						}
+					}
+				}(c)
 			}
 			if err != nil {
 				log.Println("[error]:", err)
