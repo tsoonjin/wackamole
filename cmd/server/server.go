@@ -26,6 +26,7 @@ var upgrader = websocket.Upgrader{} // use default options
 
 func handleConnect(interupt chan os.Signal) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 		c, err := upgrader.Upgrade(w, r, nil)
 		session := internal.InitSession(c)
 		if err != nil {

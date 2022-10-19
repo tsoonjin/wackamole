@@ -2,6 +2,7 @@ package internal
 
 // Manages incoming connections
 import (
+	"encoding/json"
 	"github.com/cip8/autoname"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -26,6 +27,16 @@ type Session struct {
 	room *Game
 }
 
+type SocketPayload struct {
+	Name     string `json:"name"`
+	RoomName string `json:"roomName"`
+}
+
+type SocketRequest struct {
+	Command string        `json:"command"`
+	Payload SocketPayload `json:"payload"`
+}
+
 func InitSession(conn *websocket.Conn) Session {
 	return Session{
 		Id:   uuid.New().String(),
@@ -44,9 +55,37 @@ func (s *Session) Reconnect(conn *websocket.Conn) {
 }
 
 func (s *Session) parseCommand(msg string, rooms *map[string]*Game) {
+	socketRequest := SocketRequest{}
+	json.Unmarshal([]byte(msg), &socketRequest)
+	log.Println("Parsed", socketRequest)
 	splittedMsg := strings.Split(msg, " ")
 	command := strings.TrimRight(splittedMsg[0], "\n")
 	args := splittedMsg[1:]
+	switch socketRequest.Command {
+	case "connect":
+		s.Name = socketRequest.Payload.Name
+		log.Println("Session name set to: ", s.Name)
+		return
+	case "join":
+		roomName := socketRequest.Payload.RoomName
+		log.Printf("Player %s wants to join a game, %s", s.Name, roomName)
+		if s.room != nil {
+			log.Printf("Player %s unable to join a game till current game is over", s.Name)
+		}
+		if game, ok := (*rooms)[roomName]; ok {
+			s.room = game
+			game.AddPlayer(s.Id, s)
+			return
+		}
+		newGame, err := CreateGameV2(roomName, 2, 2, []string{s.Id}, time.NewTicker(time.Second), []*Session{s})
+		if err != nil {
+			s.out <- []byte("Failed to create a new game room")
+		}
+		log.Printf("New game room created: %s", roomName)
+		(*rooms)[roomName] = newGame
+		s.room = newGame
+	}
+
 	switch command {
 	case "/join":
 		roomName := args[0]
@@ -84,6 +123,7 @@ func (s *Session) Run(interupt chan os.Signal, rooms *map[string]*Game) {
 		defer s.conn.Close()
 		for {
 			_, message, err := s.conn.ReadMessage()
+			log.Println("Message from someone", string(message))
 			if err != nil {
 				log.Println("Error reading message from socket conn: ", err)
 				return
