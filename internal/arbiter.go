@@ -3,6 +3,7 @@ package internal
 // Manages incoming connections
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/cip8/autoname"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -37,6 +38,14 @@ type SocketRequest struct {
 	Payload SocketPayload `json:"payload"`
 }
 
+type GameRoomStream struct {
+	Name           string   `json:"name"`
+	IsPrivate      bool     `json:"isPrivate"`
+	State          string   `json:"state"`
+	ReadyPlayers   []string `json:"readyPlayers"`
+	WaitingPlayers []string `json:"waitingPlayers"`
+}
+
 func InitSession(conn *websocket.Conn) Session {
 	return Session{
 		Id:   uuid.New().String(),
@@ -65,6 +74,30 @@ func (s *Session) parseCommand(msg string, rooms *map[string]*Game) {
 	case "connect":
 		s.Name = socketRequest.Payload.Name
 		log.Println("Session name set to: ", s.Name)
+		if s.room == nil {
+			newGame, err := CreateGameV2(s.Name, 2, 2, []string{s.Id}, time.NewTicker(time.Second), []*Session{s})
+			if err != nil {
+				s.out <- []byte("Failed to create a new game room")
+			}
+			log.Printf("New game room created: %s", s.Name)
+			(*rooms)[s.Name] = newGame
+			s.room = newGame
+		}
+		go func() {
+			for {
+				for _, s := range s.room.sessions {
+					time.Sleep(5 * time.Second)
+					payload, _ := json.Marshal(GameRoomStream{
+						Name:           fmt.Sprintf("Room: %d", time.Now().Unix()),
+						IsPrivate:      false,
+						State:          "WAITING",
+						ReadyPlayers:   []string{"a"},
+						WaitingPlayers: []string{"b", "c"}})
+					s.out <- []byte(payload)
+				}
+
+			}
+		}()
 		return
 	case "join":
 		roomName := socketRequest.Payload.RoomName
