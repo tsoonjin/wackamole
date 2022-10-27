@@ -84,15 +84,23 @@ func (s *Session) parseCommand(msg string, rooms *map[string]*Game) {
 			s.room = newGame
 		}
 		go func() {
-			for {
+			players := []string{"Joe", "Nick", "Nikki", "Brand"}
+			for i := 0; i < 4; i++ {
+				time.Sleep(5 * time.Second)
+				readyPlayers := players[:i+1]
+				waitingPlayers := players[i+1:]
+				var gameState = "WAITING"
+				if len(readyPlayers) == len(players) {
+					gameState = "READY"
+				}
 				for _, s := range s.room.sessions {
-					time.Sleep(5 * time.Second)
 					payload, _ := json.Marshal(GameRoomStream{
-						Name:           fmt.Sprintf("Room: %d", time.Now().Unix()),
+						Name:           fmt.Sprintf("%s Room", s.room.Id),
 						IsPrivate:      false,
-						State:          "WAITING",
-						ReadyPlayers:   []string{"a"},
-						WaitingPlayers: []string{"b", "c"}})
+						State:          gameState,
+						ReadyPlayers:   readyPlayers,
+						WaitingPlayers: waitingPlayers,
+					})
 					s.out <- []byte(payload)
 				}
 
