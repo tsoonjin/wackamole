@@ -31,6 +31,7 @@ type Session struct {
 type SocketPayload struct {
 	Name     string `json:"name"`
 	RoomName string `json:"roomName"`
+	Hit      int    `json:"hit"`
 }
 
 type SocketRequest struct {
