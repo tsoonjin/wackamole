@@ -15,6 +15,18 @@ import (
 
 var channel_buffer int = 256
 
+var clientKeyMap = map[int]string{
+	0: "w",
+	1: "e",
+	2: "r",
+	3: "s",
+	4: "d",
+	5: "f",
+	6: "x",
+	7: "c",
+	8: "v",
+}
+
 type Command interface {
 	execute()
 }
@@ -72,6 +84,27 @@ func (s *Session) parseCommand(msg string, rooms *map[string]*Game) {
 	command := strings.TrimRight(splittedMsg[0], "\n")
 	args := splittedMsg[1:]
 	switch socketRequest.Command {
+	case "init":
+		runningState := GameState{"running"}
+		if s.room.state != runningState {
+			s.room.AddPlayer("Bob", s)
+			s.room.AddPlayer("Alice", s)
+			s.room.state = GameState{"running"}
+			newBoard := s.room.initGameBoard()
+			s.room.board = newBoard
+			s.room.startTime = time.Now()
+		}
+	case "send":
+		runningState := GameState{"running"}
+		if s.room.state != runningState {
+			s.room.AddPlayer("Bob", s)
+			s.room.AddPlayer("Alice", s)
+			s.room.state = GameState{"running"}
+			newBoard := s.room.initGameBoard()
+			s.room.board = newBoard
+			s.room.startTime = time.Now()
+		}
+		s.room.AddAction(time.Now().Unix(), "Bob", clientKeyMap[socketRequest.Payload.Hit])
 	case "connect":
 		s.Name = socketRequest.Payload.Name
 		log.Println("Session name set to: ", s.Name)

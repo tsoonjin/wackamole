@@ -12,10 +12,12 @@ import (
 )
 
 type GameBoard struct {
-	Scores   map[string]int64 `json:"scores"`
-	Healths  map[string]int64 `json:"healths"`
-	GameTime int64            `json:"gameTime"`
-	Board    [3][3]int        `json:"board"`
+	Scores     map[string]int64 `json:"score"`
+	Healths    map[string]int64 `json:"health"`
+	GameTime   int64            `json:"timeLeft"`
+	Board      [3][3]int        `json:"boardInt"`
+	BoardState [9]string        `json:"board"`
+	State      string           `json:"state"`
 }
 
 type GameState struct {
@@ -25,7 +27,7 @@ type GameState struct {
 var ErrorMaxPlayersReached = errors.New("max players reached")
 var keyMap = map[string][]int{"w": []int{0, 0}, "e": []int{0, 1}, "r": []int{0, 2}, "s": []int{1, 0}, "d": []int{1, 1}, "f": []int{1, 2}, "x": []int{2, 0}, "c": []int{2, 1}, "v": []int{2, 2}}
 
-func generateGameBoard(prevBoard [3][3]int) [3][3]int {
+func generateGameBoard(prevBoard [3][3]int) ([3][3]int, int, int) {
 	molePosX := rand.Intn(3)
 	molePosY := rand.Intn(3)
 	rabbitPosX := rand.Intn(3)
@@ -37,7 +39,7 @@ func generateGameBoard(prevBoard [3][3]int) [3][3]int {
 	newBoard := [3][3]int{}
 	newBoard[molePosX][molePosY] = 1
 	newBoard[rabbitPosX][rabbitPosY] = 2
-	return newBoard
+	return newBoard, molePosX*3 + molePosY, rabbitPosX*3 + rabbitPosY
 }
 
 func (g *Game) initGameBoard() GameBoard {
@@ -48,7 +50,7 @@ func (g *Game) initGameBoard() GameBoard {
 		healths[s.Id] = 3
 	}
 	newGameBoard := [3][3]int{}
-	return GameBoard{Scores: scores, Healths: healths, GameTime: g.gameDurationMs, Board: newGameBoard}
+	return GameBoard{Scores: scores, Healths: healths, GameTime: g.gameDurationMs, Board: newGameBoard, State: "running", BoardState: [9]string{"", "", "", "", "", "", "", "", ""}}
 }
 
 func (g *Game) transitionGameState() {
@@ -91,7 +93,11 @@ func (g *Game) transitionGameState() {
 		for _, s := range g.sessions {
 			s.out <- encodedBoard
 		}
-		newBoard := GameBoard{Scores: g.board.Scores, Healths: g.board.Healths, GameTime: timeLeft, Board: generateGameBoard(g.board.Board)}
+		boardState := [9]string{"", "", "", "", "", "", "", "", ""}
+		newGameBoard, moleIdx, rabbitIdx := generateGameBoard(g.board.Board)
+		boardState[moleIdx] = "m"
+		boardState[rabbitIdx] = "r"
+		newBoard := GameBoard{Scores: g.board.Scores, Healths: g.board.Healths, GameTime: timeLeft, Board: newGameBoard, State: "running", BoardState: boardState}
 		g.board = newBoard
 		log.Printf("Game will be over in : %d seconds\nScores: %v", timeLeft, g.board.Scores)
 	}
